@@ -4,6 +4,7 @@ import LancamentoForm from './LancamentoForm';
 import ConciliacaoBancaria from './ConciliacaoBancaria';
 import RelatorioMensal from './RelatorioMensal';
 import RelatorioDetalhado from './RelatorioDetalhado';
+import Login from './Login'; 
 
 // Imports de utils e lib (subindo um nível)
 import { gerarPDFComTemplate, baixarPDF } from '../utils/pdfGenerator';
@@ -11,11 +12,33 @@ import { supabase } from '../lib/supabaseClient';
 import '../App.css';
 
 export default function App() {
+  // ==========================================================
+  // PASSO 1: TODOS OS useState DEVEM VIR PRIMEIRO (SEM EXCEÇÃO)
+  // ==========================================================
+  const [session, setSession] = useState(null); // Novo: controle de login
   const [abaAtiva, setAbaAtiva] = useState('lancamentos');
   const [cidadeSelecionada, setCidadeSelecionada] = useState('');
   const [cidades, setCidades] = useState([]);
   const [mostrarListaCidades, setMostrarListaCidades] = useState(false);
 
+  // ==========================================================
+  // PASSO 2: TODOS OS useEffect DEVEM VIR DEPOIS DOS useState
+  // ==========================================================
+  
+  // Efeito 1: Ouvir mudanças de autenticação do Supabase
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Efeito 2: Carregar cidades do banco de dados
   useEffect(() => {
     async function carregarCidades() {
       const { data } = await supabase.from('cidades').select('*').order('nome');
@@ -24,6 +47,9 @@ export default function App() {
     carregarCidades();
   }, []);
 
+  // ==========================================================
+  // PASSO 3: FUNÇÕES NORMAIS E VARIÁVEIS
+  // ==========================================================
   async function handleGerarPDF(tipoDoc) {
     if (!cidadeSelecionada) {
       alert('Selecione uma cidade primeiro!');
@@ -64,14 +90,39 @@ export default function App() {
     }
   }
 
-  // Pega o nome da cidade selecionada para exibir no botão
   const cidadeNome = cidades.find(c => c.id === cidadeSelecionada)?.nome || 'Selecione...';
 
+  // ==========================================================
+  // PASSO 4: A PORTA DE SEGURANÇA (SÓ AGORA PODEMOS DAR RETURN ANTECIPADO)
+  // ==========================================================
+  if (!session) {
+    return <Login />;
+  }
+
+  // ==========================================================
+  // PASSO 5: O RETORNO PRINCIPAL DO SISTEMA (QUANDO LOGADO)
+  // ==========================================================
   return (
     <div className="container">
-      <h1>📊 Sistema de Caixa - Mesa da Piedade</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h1>📊 Sistema de Caixa - Mesa da Piedade</h1>
+        <button 
+          onClick={() => supabase.auth.signOut()}
+          style={{ 
+            padding: '8px 16px', 
+            backgroundColor: '#dc2626', 
+            color: 'white', 
+            border: 'none', 
+            borderRadius: '6px', 
+            cursor: 'pointer', 
+            fontWeight: 'bold',
+            fontSize: '0.9rem'
+          }}
+        >
+          Sair do Sistema
+        </button>
+      </div>
       
-      {/* FILTRO DE CIDADE COM BOTÃO E LISTA FLUTUANTE */}
       <div className="card filtro-cidade relative z-50 inline-block">
         <label className="text-sm font-bold text-gray-700 mr-2">Cidade Base:</label>
         
@@ -101,7 +152,6 @@ export default function App() {
         )}
       </div>
 
-      {/* BARRA DE ABAS PRINCIPAL */}
       <div className="abas">
         <button className={abaAtiva === 'lancamentos' ? 'ativa' : ''} onClick={() => setAbaAtiva('lancamentos')}> Lançamentos</button>
         <button className={abaAtiva === 'conciliacao' ? 'ativa' : ''} onClick={() => setAbaAtiva('conciliacao')}>🏦 Conciliação Bancária</button>
@@ -113,8 +163,6 @@ export default function App() {
       <div className="conteudo-aba">
         {abaAtiva === 'lancamentos' && <LancamentoForm onSucesso={() => console.log('Lançamento salvo!')} />}
         {abaAtiva === 'conciliacao' && <ConciliacaoBancaria />}
-        
-        {/* Passamos a cidade selecionada para os relatórios filtrarem automaticamente */}
         {abaAtiva === 'relatorio' && <RelatorioMensal cidadeId={cidadeSelecionada} />}
         {abaAtiva === 'detalhado' && <RelatorioDetalhado cidadeId={cidadeSelecionada} />}
         
